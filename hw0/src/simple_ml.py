@@ -129,7 +129,36 @@ def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
         None
     """
     ### BEGIN YOUR CODE
-    pass
+    
+    # m: the num of testcase
+    # n: the num of features
+    # k: the num of labels
+    # X:     mxn
+    # y:     mx1
+    # theta: nxk
+    # gradient as to theta: nxk
+    
+    # divide testset into different epoches
+    iterations = (y.shape[0] + batch - 1) // batch
+    for i in range(iterations):
+        
+        # theta := theta - lr / batch * sum(gradient)
+        # gradient = X^T * (Z - Iy)
+        batched_X = X[i*batch: (i+1)*batch]
+        batched_y = y[i*batch: (i+1)*batch]
+        
+        # Z = normalize(exp(X * theta)), mxk dim
+        Z = np.exp(batched_X @ theta)
+        Z = Z / np.sum(Z, axis=1, keepdims=True)
+        
+        # Iy, Iy[i][y_i] = 1, others are 0, mxk dim
+        Iy = np.zeros(Z.shape)
+        Iy[np.arange(Z.shape[0]), batched_y] = 1
+        
+        # the sum of gradient, nxk dim
+        grad = batched_X.T @ (Z - Iy)
+        theta -= grad * (lr / batch)
+    
     ### END YOUR CODE
 
 
