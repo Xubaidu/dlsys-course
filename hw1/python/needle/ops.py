@@ -75,12 +75,13 @@ class PowerScalar(TensorOp):
 
     def compute(self, a: NDArray) -> NDArray:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return a**self.scalar
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        x, _ = node.inputs
+        return (out_grad * self.scalar * power_scalar(self.scalar - 1, x), )
         ### END YOUR SOLUTION
 
 
@@ -93,12 +94,13 @@ class EWiseDiv(TensorOp):
 
     def compute(self, a, b):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return a / b
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        x, y = node.inputs
+        return (out_grad / y, -x * out_grad / power_scalar(y, 2))
         ### END YOUR SOLUTION
 
 
@@ -112,12 +114,12 @@ class DivScalar(TensorOp):
 
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return a / self.scalar
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return (out_grad / self.scalar, )
         ### END YOUR SOLUTION
 
 
@@ -126,12 +128,16 @@ def divide_scalar(a, scalar):
 
 
 class Transpose(TensorOp):
+    """ reverses the order of two axes (axis1, axis2), defaults to the last two axes (1 input, axes - tuple) """
     def __init__(self, axes: Optional[tuple] = None):
         self.axes = axes
 
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if self.axes != None:
+            return array_api.swapaxes(a, self.axes[0], self.axes[1])
+        else:
+            return array_api.swapaxes(a, a.ndim - 2, a.ndim - 1)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
@@ -145,12 +151,13 @@ def transpose(a, axes=None):
 
 
 class Reshape(TensorOp):
+    """ gives a new shape to an array without changing its data (1 input, shape - tuple) """
     def __init__(self, shape):
         self.shape = shape
 
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return array_api.reshape(a, self.shape)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
@@ -164,6 +171,7 @@ def reshape(a, shape):
 
 
 class BroadcastTo(TensorOp):
+    """ broadcast an array to a new shape (1 input, shape - tuple) """
     def __init__(self, shape):
         self.shape = shape
 
@@ -181,12 +189,13 @@ def broadcast_to(a, shape):
 
 
 class Summation(TensorOp):
+    """ sum of array elements over given axes (1 input, axes - tuple) """
     def __init__(self, axes: Optional[tuple] = None):
         self.axes = axes
 
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return array_api.sum(a, axis=self.axes)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
@@ -200,14 +209,16 @@ def summation(a, axes=None):
 
 
 class MatMul(TensorOp):
+    """ matrix multiplication of the inputs (2 inputs) """
     def compute(self, a, b):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return a @ b
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        x, y = node.inputs
+        return (multiply(out_grad, y), multiply(out_grad, x))
         ### END YOUR SOLUTION
 
 
@@ -216,14 +227,15 @@ def matmul(a, b):
 
 
 class Negate(TensorOp):
+    """ numerical negative, element-wise (1 input) """
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return -a
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return (-out_grad, )
         ### END YOUR SOLUTION
 
 
@@ -278,4 +290,3 @@ class ReLU(TensorOp):
 
 def relu(a):
     return ReLU()(a)
-

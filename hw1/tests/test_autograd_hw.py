@@ -5,12 +5,22 @@ from simple_ml import *
 import numdifftools as nd
 
 import numpy as np
-import mugrade
+# import mugrade
 import needle as ndl
 
 
 ##############################################################################
 ### TESTS/SUBMISSION CODE FOR forward passes
+def test_power_scalar_forward():
+    np.testing.assert_allclose(
+        ndl.power_scalar(ndl.Tensor([
+            [1, 2, 3],
+            [4, 5, 6],
+        ]), 2).numpy(), np.array([
+            [1, 4, 9],
+            [16, 25, 36],
+        ]))
+
 def test_divide_forward():
     np.testing.assert_allclose(ndl.divide(ndl.Tensor([[3.3 , 4.35, 1.2 ],
        [2.45, 0.95, 2.55]]), ndl.Tensor([[4.6 , 4.35, 4.8 ],
@@ -19,7 +29,7 @@ def test_divide_forward():
 
 
 def test_divide_scalar_forward():
-    np.testing.assert_allclose(ndl.divide_scalar(ndl.Tensor([[1.7 , 1.45]]), scalar=12).numpy(), 
+    np.testing.assert_allclose(ndl.divide_scalar(ndl.Tensor([[1.7 , 1.45]]), scalar=12).numpy(),
         np.array([[0.141666666667, 0.120833333333]]))
 
 
