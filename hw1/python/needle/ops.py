@@ -142,7 +142,7 @@ class Transpose(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return transpose(out_grad, axes=self.axes)
         ### END YOUR SOLUTION
 
 
@@ -162,7 +162,7 @@ class Reshape(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return reshape(out_grad, node.inputs[0].shape)
         ### END YOUR SOLUTION
 
 
@@ -180,7 +180,19 @@ class BroadcastTo(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        x = node.inputs[0]
+        j = len(x.shape)-1
+        axes = []
+        for i in range(len(self.shape)-1, -1, -1):
+            if j < 0:
+                axes.append(i)
+                continue
+            if x.shape[j] != self.shape[i]:
+                axes.append(i)
+            j -= 1
+        final_axes = None if axes == [] else tuple(axes)
+        grad_x = reshape(summation(out_grad, final_axes), x.shape)
+        return grad_x
         ### END YOUR SOLUTION
 
 
@@ -199,8 +211,15 @@ class Summation(TensorOp):
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
+        """ reshape the reduced axes and broadcast out_grad to the shape of x to keep the dimensionality aligned """
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        x = node.inputs[0]
+        new_shape = list(x.shape) # for data assignment, tuple is const
+        axes = range(new_shape) if self.axes == None else self.axes # expand the reduced axes
+        for axis in axes:
+            new_shape[axis] = 1
+        grad_x = broadcast_to(reshape(out_grad, new_shape), new_shape)
+        return grad_x
         ### END YOUR SOLUTION
 
 
@@ -211,14 +230,25 @@ def summation(a, axes=None):
 class MatMul(TensorOp):
     """ matrix multiplication of the inputs (2 inputs) """
     def compute(self, a, b):
+        """ If the a.shape does not align with b.shape, they will be broadcasted first."""
         ### BEGIN YOUR SOLUTION
         return a @ b
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
+        """ The gradient of x must have the same shape with x and y is similarly. """
+        
         ### BEGIN YOUR SOLUTION
         x, y = node.inputs
-        return (multiply(out_grad, y), multiply(out_grad, x))
+        grad_x = matmul(out_grad, transpose(y))
+        grad_y = matmul(transpose(x), out_grad)
+        if x.shape != grad_x.shape:
+            dim_diff = len(grad_x.shape) - len(x.shape)
+            grad_x = summation(grad_x, tuple(range(dim_diff)))
+        if y.shape != grad_y.shape:
+            dim_diff = len(grad_y.shape) - len(y.shape)
+            grad_y = summation(grad_y, tuple(range(dim_diff)))
+        return (grad_x, grad_y)
         ### END YOUR SOLUTION
 
 
@@ -235,7 +265,7 @@ class Negate(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return (-out_grad, )
+        return -out_grad
         ### END YOUR SOLUTION
 
 
