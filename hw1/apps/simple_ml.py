@@ -30,7 +30,45 @@ def parse_mnist(image_filesname, label_filename):
                 for MNIST will contain the values 0-9.
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    with gzip.open(image_filesname, 'rb') as f:
+
+        # MNIST stores data in big-endian format
+        # load header variables
+        _ = struct.unpack('>I', f.read(4))[0]
+        num_images = struct.unpack('>I', f.read(4))[0]
+        num_rows = struct.unpack('>I', f.read(4))[0]
+        num_cols = struct.unpack('>I', f.read(4))[0]
+
+        # load images pixels
+        images_data = f.read(num_images * num_rows * num_cols)
+        images = struct.unpack('>' + 'B' * len(images_data), images_data)
+
+        # reshape images
+        images = np.array(images).reshape(num_images, num_rows * num_cols)
+
+        # normalize the dataset
+        images = images / 255
+
+        # convert the data to fp32
+        images = images.astype(np.float32)
+
+    with gzip.open(label_filename, 'rb') as f:
+
+        # load header variables
+        _ = struct.unpack('>I', f.read(4))[0]
+        num_labels = struct.unpack('>I', f.read(4))[0]
+
+        # load images pixels
+        labels_data = f.read(num_labels)
+        labels = struct.unpack('>' + 'B' * len(labels_data), labels_data)
+
+        # reshape images
+        labels = np.array(labels)
+
+        # convert the data to uint8
+        labels = labels.astype(np.uint8)
+
+    return (images, labels)
     ### END YOUR SOLUTION
 
 

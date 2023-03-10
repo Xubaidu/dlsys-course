@@ -32,7 +32,7 @@ class AddScalar(TensorOp):
         return a + self.scalar
 
     def gradient(self, out_grad: Tensor, node: Tensor):
-        return out_grad
+        return (out_grad, )
 
 
 def add_scalar(a, scalar):
@@ -142,7 +142,7 @@ class Transpose(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return transpose(out_grad, axes=self.axes)
+        return (transpose(out_grad, axes=self.axes), )
         ### END YOUR SOLUTION
 
 
@@ -162,7 +162,7 @@ class Reshape(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return reshape(out_grad, node.inputs[0].shape)
+        return (reshape(out_grad, node.inputs[0].shape), )
         ### END YOUR SOLUTION
 
 
@@ -192,7 +192,7 @@ class BroadcastTo(TensorOp):
             j -= 1
         final_axes = None if axes == [] else tuple(axes)
         grad_x = reshape(summation(out_grad, final_axes), x.shape)
-        return grad_x
+        return (grad_x, )
         ### END YOUR SOLUTION
 
 
@@ -215,11 +215,11 @@ class Summation(TensorOp):
         ### BEGIN YOUR SOLUTION
         x = node.inputs[0]
         new_shape = list(x.shape) # for data assignment, tuple is const
-        axes = range(new_shape) if self.axes == None else self.axes # expand the reduced axes
+        axes = range(len(new_shape)) if self.axes == None else self.axes # expand the reduced axes
         for axis in axes:
             new_shape[axis] = 1
-        grad_x = broadcast_to(reshape(out_grad, new_shape), new_shape)
-        return grad_x
+        grad_x = broadcast_to(reshape(out_grad, new_shape), x.shape)
+        return (grad_x, )
         ### END YOUR SOLUTION
 
 
@@ -265,7 +265,7 @@ class Negate(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return -out_grad
+        return (-out_grad, )
         ### END YOUR SOLUTION
 
 
@@ -276,12 +276,12 @@ def negate(a):
 class Log(TensorOp):
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return array_api.log(a)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return (divide_scalar(out_grad, 1), )
         ### END YOUR SOLUTION
 
 
