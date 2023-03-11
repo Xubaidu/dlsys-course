@@ -563,6 +563,9 @@ def test_softmax_loss_ndl():
 
     # test backward pass for log
     gradient_check(ndl.log, ndl.Tensor(1 + np.random.rand(5,4)))
+    
+    # test backward pass for exp
+    gradient_check(ndl.exp, ndl.Tensor(1 + np.random.rand(5,4)))
 
     X,y = parse_mnist("data/train-images-idx3-ubyte.gz",
                       "data/train-labels-idx1-ubyte.gz")

@@ -89,7 +89,12 @@ def softmax_loss(Z, y_one_hot):
         Average softmax loss over the sample. (ndl.Tensor[np.float32])
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    from needle import log, exp
+    from needle import summation
+    m = Z.shape[0]
+    term1 = log(summation(exp(Z), (1,)))
+    term2 = summation(Z * y_one_hot, (1,))
+    return summation(term1 - term2) / m
     ### END YOUR SOLUTION
 
 
