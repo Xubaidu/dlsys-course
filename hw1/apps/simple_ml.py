@@ -101,7 +101,7 @@ def softmax_loss(Z, y_one_hot):
 def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
     """ Run a single epoch of SGD for a two-layer neural network defined by the
     weights W1 and W2 (with no bias terms):
-        logits = ReLU(X * W1) * W1
+        logits = ReLU(X * W1) * W2
     The function should use the step size lr, and the specified batch size (and
     again, without randomizing the order of X).
 
@@ -123,7 +123,35 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
     """
 
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    iterations = (X.shape[0] + batch - 1) // batch
+    for i in range(iterations):
+        x_batch = X[i*batch: (i+1)*batch]
+        y_batch = y[i*batch: (i+1)*batch]
+        
+        x = ndl.Tensor(x_batch)
+        Z = ndl.relu(x @ W1) @ W2
+        
+        y_one_hot = np.zeros(Z.shape)
+        y_one_hot[np.arange(batch), y_batch] = 1
+        y_one_hot = ndl.Tensor(y_one_hot)
+        loss = softmax_loss(Z, y_one_hot)
+        loss.backward()
+        
+        # The below code snippt will cause the size expansion of computational graph,
+        # because we have made W1 a function of lr * W1.grad, and similarly W2 is the same.
+        # The expansion will slow down our computing.
+        '''
+        W1 = W1 - lr * W1.grad
+        W2 = W2 - lr * W2.grad
+        print(ndl.autograd.TENSOR_COUNTER)
+        '''
+        
+        # We have 2 solutions: one is to use Tensor.detach(),
+        # and the other one is to use cached_data of each tensor.
+        # I think the 2nd solution is better because it used the cached data.
+        W1 = ndl.Tensor(W1.realize_cached_data() - lr * W1.grad.realize_cached_data())
+        W2 = ndl.Tensor(W2.realize_cached_data() - lr * W2.grad.realize_cached_data())
+    return (W1, W2)
     ### END YOUR SOLUTION
 
 

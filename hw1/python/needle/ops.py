@@ -311,12 +311,19 @@ def exp(a):
 class ReLU(TensorOp):
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return array_api.maximum(a, 0)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        """ derivative of RELU(x): 1 when x > 0; 0 when x <= 0"""
+        out = array_api.copy(node.realize_cached_data())
+        
+        # out is the output of RELU,
+        # so the value of it is almost 0 and x,
+        # we only need to calculate the derivative of the part of x >0 
+        out[out > 0] = 1
+        return (out_grad * Tensor(out), )
         ### END YOUR SOLUTION
 
 

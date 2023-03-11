@@ -287,7 +287,7 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
             assert (gradients_bf[i] == gradients[i]).all(), f'calculated gradient should be the same, but fail at gradient {i}'
 
         W = [W1, W2]
-        for i in range(layer_num - 1, -1, -1):
+        for i in range(layer_num):
             W[i] -= lr / batch * gradients[i]
         
     ### END YOUR CODE
