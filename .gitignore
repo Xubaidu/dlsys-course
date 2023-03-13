@@ -2,3 +2,4 @@
 __pycache__
 *.so
 *.plist
+*.DS_Store
