@@ -122,6 +122,10 @@ class Op:
 class TensorOp(Op):
     """ Op class specialized to output tensors, will be alterate subclasses for other structures """
 
+    # The override of __call__ makes TensorOp become a functor,
+    # which allows the usages such as PowerScalar(scalar)(a).
+    # It will instantiate a instance(PowerScalar(scalar)) firstly,
+    # then call the Tensor.make_from_op() method through __call__() method.
     def __call__(self, *args):
         return Tensor.make_from_op(self, args)
 
@@ -365,7 +369,7 @@ class Tensor(Value):
 
     def __pow__(self, other):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return needle.ops.PowerScalar(other)(self)
         ### END YOUR SOLUTION
 
     def __sub__(self, other):

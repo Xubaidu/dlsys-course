@@ -138,8 +138,8 @@ class PowerScalar(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        x, _ = node.inputs
-        return (out_grad * self.scalar * power_scalar(self.scalar - 1, x), )
+        x = node.inputs[0]
+        return (out_grad * self.scalar * power_scalar(x, self.scalar - 1), )
         ### END YOUR SOLUTION
 
 

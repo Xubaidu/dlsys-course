@@ -82,18 +82,34 @@ class Identity(Module):
 
 
 class Linear(Module):
+    
+    '''
+    Y = XW + Bias
+    Y: n x out
+    X: n x in
+    W: in x out
+    BIas: 1 x out -> n x out
+    '''
     def __init__(self, in_features, out_features, bias=True, device=None, dtype="float32"):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        self.weight = init.kaiming_uniform(self.in_features, self.out_features)
+        
+        # My current understanding: kaming_unifrom relys on fan_in to decide the up-bound.
+        # If we directly init bias through kaiming_uniform(1, self.out_features),
+        # the up-bound will be fixed as sqrt(6), which may lack some randomness.
+        self.bias = init.kaiming_uniform(self.out_features, 1).reshape((1, self.out_features))
         ### END YOUR SOLUTION
 
     def forward(self, X: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        Y = X @ self.weight
+        self.bias = ops.broadcast_to(self.bias, Y.shape)
+        Y += self.bias
+        return Y
         ### END YOUR SOLUTION
 
 
