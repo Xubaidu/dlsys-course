@@ -377,8 +377,10 @@ class ReLU(TensorOp):
         out = array_api.copy(node.realize_cached_data())
         
         # out is the output of RELU,
-        # so the value of it is almost 0 and x,
-        # we only need to calculate the derivative of the part of x >0 
+        # so the value of it is either 0 or x,
+        # we only need to calculate the derivative of the part of x > 0,
+        # and specify the others as 0,
+        # though the derivative at x = 0 does not exist.
         out[out > 0] = 1
         return (out_grad * Tensor(out), )
         ### END YOUR SOLUTION
@@ -395,12 +397,33 @@ class LogSumExp(TensorOp):
 
     def compute(self, Z):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        '''Z = log(sum(exp(Z - Z_max_keepdim))) + Z_max'''
+        Z_max = array_api.max(Z, axis=self.axes)
+        Z_max_keepdim = array_api.max(Z, axis=self.axes, keepdims=True)
+        return array_api.log(array_api.sum(array_api.exp(Z - Z_max_keepdim), axis=self.axes)) + Z_max
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        '''
+        grad = exp(Z) / sum(exp(Z))
+             = exp(Z) / exp(log(sum(exp(Z))))
+             = exp(Z) / exp(node)
+             = exp(Z - node)
+        Then we have to broadcast node to Z.shape since it is summated in some axes.
+        We have to find the axes whrere node is summated and construct a new shape.
+        '''
+        Z = node.inputs[0]
+        new_shape = list(Z.shape)
+        if self.axes:
+            for i in range(len(Z.shape)):
+                if i in self.axes:
+                    new_shape[i] = 1
+        else:
+            for i in range(len(Z.shape)):
+                new_shape[i] = 1
+        grad = exp(Z - broadcast_to(reshape(node, new_shape), Z.shape))
+        return (broadcast_to(reshape(out_grad, new_shape), grad.shape) * grad, )
         ### END YOUR SOLUTION
 
 
