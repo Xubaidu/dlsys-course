@@ -190,8 +190,7 @@ class BroadcastTo(TensorOp):
             if x.shape[j] != self.shape[i]:
                 axes.append(i)
             j -= 1
-        final_axes = None if axes == [] else tuple(axes)
-        grad_x = reshape(summation(out_grad, final_axes), x.shape)
+        grad_x = reshape(summation(out_grad, tuple(axes)), x.shape)
         return (grad_x, )
         ### END YOUR SOLUTION
 

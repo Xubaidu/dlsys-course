@@ -90,7 +90,7 @@ class AddScalar(TensorOp):
         return a + self.scalar
 
     def gradient(self, out_grad: Tensor, node: Tensor):
-        return out_grad
+        return (out_grad, )
 
 
 def add_scalar(a, scalar):
@@ -238,6 +238,14 @@ class BroadcastTo(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
+        '''
+        Find out the axes where x is broadcasted and sum them up,
+        i.e. summation(out_grad, axes).
+        If x.shape == node.shape, we should directly return out_grad.
+        This can also be done by summation(out_grad, ()),
+        which keep consistency with the above steps.
+        So the whole algrathm works.
+        '''
         x = node.inputs[0]
         j = len(x.shape)-1
         axes = []
@@ -248,8 +256,7 @@ class BroadcastTo(TensorOp):
             if x.shape[j] != self.shape[i]:
                 axes.append(i)
             j -= 1
-        final_axes = None if axes == [] else tuple(axes)
-        grad_x = reshape(summation(out_grad, final_axes), x.shape)
+        grad_x = reshape(summation(out_grad, tuple(axes)), x.shape)
         return (grad_x, )
         ### END YOUR SOLUTION
 

@@ -5,6 +5,7 @@ from needle.autograd import Tensor
 from needle import ops
 import needle.init as init
 import numpy as np
+import functools
 
 
 class Parameter(Tensor):
@@ -96,19 +97,18 @@ class Linear(Module):
         self.out_features = out_features
 
         ### BEGIN YOUR SOLUTION
-        self.weight = init.kaiming_uniform(self.in_features, self.out_features)
+        self.weight = Parameter(init.kaiming_uniform(self.in_features, self.out_features))
         
         # My current understanding: kaming_unifrom relys on fan_in to decide the up-bound.
         # If we directly init bias through kaiming_uniform(1, self.out_features),
         # the up-bound will be fixed as sqrt(6), which may lack some randomness.
-        self.bias = init.kaiming_uniform(self.out_features, 1).reshape((1, self.out_features))
+        self.bias = Parameter(init.kaiming_uniform(self.out_features, 1).reshape((1, self.out_features)))
         ### END YOUR SOLUTION
 
     def forward(self, X: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
         Y = X @ self.weight
-        self.bias = ops.broadcast_to(self.bias, Y.shape)
-        Y += self.bias
+        Y += self.bias.broadcast_to(Y.shape)
         return Y
         ### END YOUR SOLUTION
 
@@ -117,7 +117,9 @@ class Linear(Module):
 class Flatten(Module):
     def forward(self, X):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        dim = functools.reduce(lambda a, b: a*b, X.shape[1:])
+        new_shape = (X.shape[0], dim)
+        return ops.reshape(X, new_shape)
         ### END YOUR SOLUTION
 
 
@@ -147,11 +149,11 @@ class Sequential(Module):
 class SoftmaxLoss(Module):
     def forward(self, logits: Tensor, y: Tensor):
         ### BEGIN YOUR SOLUTION
-        y_one_hot = init.one_hot(np.max(y.cached_data) + 1, y)
+        y_one_hot = Parameter(init.one_hot(np.max(y.cached_data) + 1, y))
         axes = (1, )
         term1 = ops.logsumexp(logits, axes)
-        term2 = ops.summation(logits * y_one_hot, axes)
-        loss = ops.summation(term1 - term2) / logits.shape[0]
+        term2 = (logits * y_one_hot).sum(axes)
+        loss = (term1 - term2).sum() / logits.shape[0]
         return loss
         ### END YOUR SOLUTION
 
@@ -180,12 +182,20 @@ class LayerNorm1d(Module):
         self.dim = dim
         self.eps = eps
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        self.weight = Parameter(init.ones(dim))
+        self.bias = Parameter(init.zeros(dim))
         ### END YOUR SOLUTION
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        batch = x.shape[0]
+        axes = (batch, 1)
+        e_x = (x.sum(axes=(1, )) / x.shape[1]).reshape(axes).broadcast_to(x.shape)
+        var_x = (((x - e_x) ** 2).sum(axes=(1, )) / x.shape[1]).reshape(axes).broadcast_to(x.shape)
+        ans = self.weight.broadcast_to(x.shape) \
+            * ((x - e_x) / (var_x + self.eps) ** 0.5) \
+            + self.bias.broadcast_to(x.shape)
+        return ans
         ### END YOUR SOLUTION
 
 
