@@ -6,6 +6,7 @@ from needle import ops
 import needle.init as init
 import numpy as np
 import functools
+import random
 
 
 class Parameter(Tensor):
@@ -83,7 +84,7 @@ class Identity(Module):
 
 
 class Linear(Module):
-    
+
     '''
     Y = XW + Bias
     Y: n x out
@@ -98,7 +99,7 @@ class Linear(Module):
 
         ### BEGIN YOUR SOLUTION
         self.weight = Parameter(init.kaiming_uniform(self.in_features, self.out_features))
-        
+
         # My current understanding: kaming_unifrom relys on fan_in to decide the up-bound.
         # If we directly init bias through kaiming_uniform(1, self.out_features),
         # the up-bound will be fixed as sqrt(6), which may lack some randomness.
@@ -166,13 +167,41 @@ class BatchNorm1d(Module):
         self.eps = eps
         self.momentum = momentum
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # weight and bias need to be learned, so pack them as Parameter
+        self.weight = Parameter(init.ones(dim))
+        self.bias = Parameter(init.zeros(dim))
+
+        # running_mean and running_var are used at test time, no need to be packed as Parameter
+        self.running_mean = init.zeros(dim)
+        self.running_var = init.ones(dim)
         ### END YOUR SOLUTION
 
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        
+        # remember to set the shape of e_x and var_x during computing,
+        # but also cache the data for the update of running_mean and running_var
+        batch = x.shape[0]
+        e_x = x.sum(axes=(0, )) / batch
+        minas = x - e_x.broadcast_to(x.shape)
+        var_x = (minas ** 2).sum(axes=(0, )) / batch
+        std_deviation = (var_x.broadcast_to(x.shape) + self.eps) ** 0.5
+        
+        if self.training:
+            ans = self.weight.broadcast_to(x.shape) \
+                * minas / std_deviation \
+                + self.bias.broadcast_to(x.shape)
+
+            # avoid unnecessary constructions of graph node
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * e_x.data
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var_x.data
+            return ans
+        else:
+            ans = self.weight.broadcast_to(x.shape) \
+                * ((x - self.running_mean) / (self.running_var + self.eps) ** 0.5) \
+                + self.bias.broadcast_to(x.shape)
+            return ans
         ### END YOUR SOLUTION
 
 
@@ -206,7 +235,10 @@ class Dropout(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if self.training:
+            return x * init.randb(*x.shape, p=self.p) / (1 - self.p)
+        else:
+            return x
         ### END YOUR SOLUTION
 
 
@@ -217,8 +249,5 @@ class Residual(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return x + self.fn(x)
         ### END YOUR SOLUTION
-
-
-
