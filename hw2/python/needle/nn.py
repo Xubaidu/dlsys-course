@@ -150,7 +150,7 @@ class Sequential(Module):
 class SoftmaxLoss(Module):
     def forward(self, logits: Tensor, y: Tensor):
         ### BEGIN YOUR SOLUTION
-        y_one_hot = Parameter(init.one_hot(np.max(y.cached_data) + 1, y))
+        y_one_hot = Parameter(init.one_hot(logits.shape[1], y))
         axes = (1, )
         term1 = ops.logsumexp(logits, axes)
         term2 = (logits * y_one_hot).sum(axes)
