@@ -237,52 +237,50 @@ def submit_mnist_dataset():
 
 
 def test_dataloader_mnist():
-    batch_size = 1
-    mnist_train_dataset = ndl.data.MNISTDataset("data/train-images-idx3-ubyte.gz",
-                                                "data/train-labels-idx1-ubyte.gz")
-    mnist_train_dataloader = ndl.data.DataLoader(dataset=mnist_train_dataset,
-                                                 batch_size=batch_size,
-                                                 shuffle=False)
+    for batch_size in [5, 15, 100]:
+        mnist_train_dataset = ndl.data.MNISTDataset("data/train-images-idx3-ubyte.gz",
+                                                    "data/train-labels-idx1-ubyte.gz")
+        mnist_train_dataloader = ndl.data.DataLoader(dataset=mnist_train_dataset,
+                                                    batch_size=batch_size,
+                                                    shuffle=False)
 
-    for i, batch in enumerate(mnist_train_dataloader):
-        batch_x, batch_y = batch[0].numpy(), batch[1].numpy()
-        truth = mnist_train_dataset[i * batch_size:(i + 1) * batch_size]
-        truth_x = truth[0] if truth[0].shape[0] > 1 else truth[0].reshape(-1)
-        truth_y = truth[1] if truth[1].shape[0] > 1 else truth[1].reshape(-1)
+        for i, batch in enumerate(mnist_train_dataloader):
+            batch_x, batch_y = batch[0].numpy(), batch[1].numpy()
+            truth = mnist_train_dataset[i * batch_size:(i + 1) * batch_size]
+            truth_x, truth_y = truth[0], truth[1]
 
-        np.testing.assert_allclose(truth_x, batch_x.flatten())
-        np.testing.assert_allclose(batch_y, truth_y)
+            np.testing.assert_allclose(truth_x, batch_x)
+            np.testing.assert_allclose(batch_y, truth_y)
 
-    batch_size = 5
-    mnist_test_dataset = ndl.data.MNISTDataset("data/t10k-images-idx3-ubyte.gz",
-                                               "data/t10k-labels-idx1-ubyte.gz")
-    mnist_test_dataloader = ndl.data.DataLoader(dataset=mnist_test_dataset,
-                                                batch_size=batch_size,
-                                                shuffle=False)
+        mnist_test_dataset = ndl.data.MNISTDataset("data/t10k-images-idx3-ubyte.gz",
+                                                "data/t10k-labels-idx1-ubyte.gz")
+        mnist_test_dataloader = ndl.data.DataLoader(dataset=mnist_test_dataset,
+                                                    batch_size=batch_size,
+                                                    shuffle=False)
 
-    for i, batch in enumerate(mnist_test_dataloader):
-        batch_x, batch_y = batch[0].numpy(), batch[1].numpy()
-        truth = mnist_test_dataset[i * batch_size:(i + 1) * batch_size]
-        truth_x = truth[0]
-        truth_y = truth[1]
+        for i, batch in enumerate(mnist_test_dataloader):
+            batch_x, batch_y = batch[0].numpy(), batch[1].numpy()
+            truth = mnist_test_dataset[i * batch_size:(i + 1) * batch_size]
+            truth_x = truth[0]
+            truth_y = truth[1]
 
-        np.testing.assert_allclose(truth_x, batch_x)
-        np.testing.assert_allclose(batch_y, truth_y)
+            np.testing.assert_allclose(truth_x, batch_x)
+            np.testing.assert_allclose(batch_y, truth_y)
 
 
 
-    noshuf = bat9 = ndl.data.DataLoader(dataset=mnist_test_dataset,
+        noshuf = bat9 = ndl.data.DataLoader(dataset=mnist_test_dataset,
+                                            batch_size=10,
+                                            shuffle=False)
+        shuf = bat9 = ndl.data.DataLoader(dataset=mnist_test_dataset,
                                         batch_size=10,
-                                        shuffle=False)
-    shuf = bat9 = ndl.data.DataLoader(dataset=mnist_test_dataset,
-                                      batch_size=10,
-                                      shuffle=True)
-    diff = False
-    for i, j in zip(shuf, noshuf):
-        if i != j:
-            diff = True
-            break
-    assert diff, 'shuffling had no effect on the dataloader.'
+                                        shuffle=True)
+        diff = False
+        for i, j in zip(shuf, noshuf):
+            if i != j:
+                diff = True
+                break
+        assert diff, 'shuffling had no effect on the dataloader.'
 
 
 def test_dataloader_ndarray():
