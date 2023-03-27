@@ -138,12 +138,9 @@ class Sequential(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        in_tensor = x
-        out_tensor = None
         for module in self.modules:
-            out_tensor = module.forward(in_tensor)
-            in_tensor = out_tensor
-        return out_tensor
+            x = module.forward(x)
+        return x
         ### END YOUR SOLUTION
 
 
@@ -179,7 +176,7 @@ class BatchNorm1d(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        
+
         # remember to set the shape of e_x and var_x during computing,
         # but also cache the data for the update of running_mean and running_var
         batch = x.shape[0]
@@ -187,7 +184,7 @@ class BatchNorm1d(Module):
         minas = x - e_x.broadcast_to(x.shape)
         var_x = (minas ** 2).sum(axes=(0, )) / batch
         std_deviation = (var_x.broadcast_to(x.shape) + self.eps) ** 0.5
-        
+
         if self.training:
             ans = self.weight.broadcast_to(x.shape) \
                 * minas / std_deviation \
@@ -236,7 +233,11 @@ class Dropout(Module):
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
         if self.training:
-            return x * init.randb(*x.shape, p=self.p) / (1 - self.p)
+            # init.randb will generate 0 by (1 - p) and generate 1 by p,
+            # but dropout will put input to 0 by p and 1 by 1 - p,
+            # which is in contrast to the init method we provided,
+            # so we need to pass (1-self.p) to init.randb.
+            return x * init.randb(*x.shape, p=(1 - self.p)) / (1 - self.p)
         else:
             return x
         ### END YOUR SOLUTION

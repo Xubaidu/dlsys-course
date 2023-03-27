@@ -33,7 +33,7 @@ def zeros(*shape, device=None, dtype="float32", requires_grad=False):
     """ Generate all-zeros Tensor """
     return constant(*shape, c=0.0, device=device, dtype=dtype, requires_grad=requires_grad)
 
-
+# change a[index] to 1 by p, and to 0 by 1 - p
 def randb(*shape, p=0.5, device=None, dtype="bool", requires_grad=False):
     """ Generate binary random Tensor """
     device = ndl.cpu() if device is None else device
