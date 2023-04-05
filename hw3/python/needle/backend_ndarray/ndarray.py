@@ -134,7 +134,7 @@ class NDArray:
         """Create a new NDArray with the given properties.  This will allocation the
         memory if handle=None, otherwise it will use the handle of an existing
         array."""
-        array = NDArray.__new__(NDArray)
+        array = NDArray.__new__(NDArray) # __new__ only create an instance
         array._shape = tuple(shape)
         array._strides = NDArray.compact_strides(shape) if strides is None else strides
         array._offset = offset
@@ -241,7 +241,17 @@ class NDArray:
         """
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if prod(new_shape) != prod(self._shape):
+            raise ValueError('the flatten length of new shape is not equal to the current one')
+        if not self.is_compact():
+            raise ValueError('NDArray is not compact')
+        return NDArray.make(
+            shape=new_shape,
+            strides=NDArray.compact_strides(new_shape),
+            device=self._device,
+            handle=self._handle,
+            offset=self._offset
+        )
         ### END YOUR SOLUTION
 
     def permute(self, new_axes):
@@ -264,7 +274,21 @@ class NDArray:
         """
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+
+        # From the 1st principle to think, stride is used for memory addressing.
+        # permute does not bring any memory copy and never change the memory layout.
+        # It only changes the way of interprating an NDArray.
+        # So the value of strides will keep the same and only be permuted.
+
+        new_shape = tuple(np.array(self._shape)[new_axes])
+        new_strides = tuple(np.array(self._strides)[new_axes])
+        return NDArray.make(
+            shape=new_shape,
+            strides=new_strides,
+            device=self._device,
+            handle=self._handle,
+            offset=self._offset
+        )
         ### END YOUR SOLUTION
 
     def broadcast_to(self, new_shape):
@@ -285,7 +309,18 @@ class NDArray:
         """
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        new_strides = [0 for i in range(len(new_shape))]
+        for i in range(1, len(self._shape) + 1):
+            if self._shape[-i] != new_shape[-i]:
+                assert self._shape[-i] == 1, f'when new_shape[-{i}] == self._shape[-{i}], self._shape[-{i}] should equal to 1'
+            new_strides[-i] = self._strides[-i]
+        ret = NDArray.make(
+            shape=new_shape,
+            strides=new_strides,
+            device=self._device,
+            handle=self._handle,
+        )
+        return ret
         ### END YOUR SOLUTION
 
     ### Get and set elements
