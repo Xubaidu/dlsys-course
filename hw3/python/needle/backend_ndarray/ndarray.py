@@ -276,12 +276,16 @@ class NDArray:
         ### BEGIN YOUR SOLUTION
 
         # From the 1st principle to think, stride is used for memory addressing.
-        # permute does not bring any memory copy and never change the memory layout.
-        # It only changes the way of interprating an NDArray.
-        # So the value of strides will keep the same and only be permuted.
+        # permute does not change the memory layout but only changes the way of interprating an NDArray.
+        # i.e. the logic layout of value is changed. As long as we use the correct stride value for computing,
+        # we can always access the right memory. So the value of strides will keep the same but only be permuted.
+        
+        # Eg. suppose we have A=[[1,2,7], [5,6,2]], and it is permuted as A'=[[1,5], [2,6], [7,2]] (actully tanspose).
+        # The actual memory layout is [1,2,7,5,6,2]. When we want to access A'[2][0] (the value 6), we do
+        # stride[0]*0 + stride[1]*2, where stride[0]=3, stride[1]=1, so the answer is 2, and we get 7.
 
-        new_shape = tuple(np.array(self._shape)[new_axes])
-        new_strides = tuple(np.array(self._strides)[new_axes])
+        new_shape = tuple(self._shape[i] for i in new_axes)
+        new_strides = tuple(self._strides[i] for i in new_axes)
         return NDArray.make(
             shape=new_shape,
             strides=new_strides,
@@ -309,14 +313,22 @@ class NDArray:
         """
 
         ### BEGIN YOUR SOLUTION
+        
+        # Let's think from the view of equation.
+        # before: sum(i*S[i]) + 0*S[k]
+        # now: sum(i*S'[i]) + j*S'[k]
+        # Set the stride as 0 for the broadcasted dims and keep the others the same.
         new_strides = [0 for i in range(len(new_shape))]
         for i in range(1, len(self._shape) + 1):
-            if self._shape[-i] != new_shape[-i]:
-                assert self._shape[-i] == 1, f'when new_shape[-{i}] == self._shape[-{i}], self._shape[-{i}] should equal to 1'
-            new_strides[-i] = self._strides[-i]
+            if self._shape[-i] == new_shape[-i]:
+                new_strides[-i] = self._strides[-i]
+                continue
+            assert self._shape[-i] == 1, \
+                f'when new_shape[-{i}] == self._shape[-{i}], self._shape[-{i}] should equal to 1'
+            new_strides[-i] = 0
         ret = NDArray.make(
             shape=new_shape,
-            strides=new_strides,
+            strides=tuple(new_strides),
             device=self._device,
             handle=self._handle,
         )
