@@ -264,7 +264,7 @@ getitem_params = [
 def test_getitem(device, params):
     shape = params['shape']
     fn = params['fn']
-    _A = np.random.randn(5, 5)
+    _A = np.random.randn(*shape)
     A = nd.array(_A, device=device)
     lhs = fn(_A)
     rhs = fn(A)

@@ -1,9 +1,9 @@
 import operator
-import math
 from functools import reduce
 import numpy as np
 from . import ndarray_backend_numpy
 from . import ndarray_backend_cpu
+import pdb
 
 # math.prod not in Python 3.7
 def prod(x):
@@ -386,6 +386,7 @@ class NDArray:
         # handle singleton as tuple, everything as slices
         if not isinstance(idxs, tuple):
             idxs = (idxs,)
+        # idxs = tuple(slice(idx[0], idx[1], idx[2]) for idx in idxs)
         idxs = tuple(
             [
                 self.process_slice(s, i) if isinstance(s, slice) else slice(s, s + 1, 1)
@@ -393,9 +394,24 @@ class NDArray:
             ]
         )
         assert len(idxs) == self.ndim, "Need indexes equal to number of dimensions"
-
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        offset = sum(
+            [stride * sl.start for stride, sl in zip(self.strides, idxs)]
+        )
+        new_shape = tuple(
+            (sl.stop - sl.start) // sl.step for sl in idxs
+        )
+        new_strides = tuple(
+            stride * sl.step for stride, sl in zip(self.strides, idxs)
+        )
+        ret = NDArray.make(
+            shape=new_shape,
+            strides=new_strides,
+            device=self._device,
+            handle=self._handle,
+            offset=offset
+        )
+        return ret
         ### END YOUR SOLUTION
 
     def __setitem__(self, idxs, other):
