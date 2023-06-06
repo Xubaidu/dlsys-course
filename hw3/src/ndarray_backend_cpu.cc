@@ -72,12 +72,13 @@ void Compact(const AlignedArray &a, AlignedArray *out, std::vector<uint32_t> sha
      */
     /// BEGIN YOUR SOLUTION
     std::vector<uint32_t> indices(shape.size(), 0);
+    uint32_t cnt = 0;
 	do {
 		uint32_t addr = 0;
 		for (int i = 0; i < indices.size(); ++i) {
 			addr += indices[i] * strides[i];
 		}
-		out->ptr[addr] = a.ptr[offset + addr];
+		out->ptr[cnt++] = a.ptr[offset + addr];
 	} while (carry(indices, shape));
     /// END YOUR SOLUTION
 }
@@ -96,12 +97,13 @@ void EwiseSetitem(const AlignedArray &a, AlignedArray *out, std::vector<uint32_t
      */
     /// BEGIN YOUR SOLUTION
 	std::vector<uint32_t> indices(shape.size(), 0);
+    uint32_t cnt = 0;
 	do {
 		uint32_t addr = 0;
 		for (int i = 0; i < indices.size(); ++i) {
 			addr += indices[i] * strides[i];
 		}
-		out->ptr[offset + addr] = a.ptr[addr];
+		out->ptr[offset + addr] = a.ptr[cnt++];
 	} while (carry(indices, shape));
     /// END YOUR SOLUTION
 }
@@ -109,10 +111,10 @@ void EwiseSetitem(const AlignedArray &a, AlignedArray *out, std::vector<uint32_t
 void ScalarSetitem(const size_t size, scalar_t val, AlignedArray *out, std::vector<uint32_t> shape,
                    std::vector<uint32_t> strides, size_t offset) {
     /**
-     * Set items is a (non-compact) array
+     * Set items in a (non-compact) array
      *
      * Args:
-     *   size: number of elements to write in out array (note that this will note be the same as
+     *   size: number of elements to write in out array (note that this will be the same as
      *         out.size, because out is a non-compact subset array);  it _will_ be the same as the
      *         product of items in shape, but convenient to just pass it here.
      *   val: scalar value to write to
@@ -124,13 +126,16 @@ void ScalarSetitem(const size_t size, scalar_t val, AlignedArray *out, std::vect
 
     /// BEGIN YOUR SOLUTION
 	std::vector<uint32_t> indices(shape.size(), 0);
+    uint32_t cnt = 0;
 	do {
 		uint32_t addr = 0;
 		for (int i = 0; i < indices.size(); ++i) {
 			addr += indices[i] * strides[i];
 		}
 		out->ptr[offset + addr] = val;
+        cnt++;
 	} while (carry(indices, shape));
+    assert(cnt == size);
     /// END YOUR SOLUTION
 }
 

@@ -399,7 +399,7 @@ class NDArray:
             [stride * sl.start for stride, sl in zip(self.strides, idxs)]
         )
         new_shape = tuple(
-            (sl.stop - sl.start) // sl.step for sl in idxs
+            (sl.stop - sl.start + sl.step - 1) // sl.step for sl in idxs
         )
         new_strides = tuple(
             stride * sl.step for stride, sl in zip(self.strides, idxs)

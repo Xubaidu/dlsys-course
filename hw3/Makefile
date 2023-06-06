@@ -1,12 +1,13 @@
-.PHONY: lib, pybind, clean, format, all
+buildDir := $(shell pwd)/build
 
-all: lib
+.PHONY: build, pybind, clean, format, all, tests
 
+all: build
 
-lib:
+build:
 	@mkdir -p build
 	@cd build; cmake ..
-	@cd build; $(MAKE)
+	@cd build; $(MAKE) -j$(shell nproc)
 
 format:
 	python3 -m black .
@@ -14,3 +15,7 @@ format:
 
 clean:
 	rm -rf build python/needle/backend_ndarray/ndarray_backend*.so
+	rm -rf $(buildDir)
+
+tests:
+	python3 -m pytest -v -k "(compact or setitem) and cpu"
