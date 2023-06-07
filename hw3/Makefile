@@ -1,6 +1,6 @@
 buildDir := $(shell pwd)/build
 
-.PHONY: build, pybind, clean, format, all, tests
+.PHONY: build pybind clean format all tests
 
 all: build
 
@@ -18,4 +18,4 @@ clean:
 	rm -rf $(buildDir)
 
 tests:
-	python3 -m pytest -v -k "(compact or setitem) and cpu"
+	python3 -m pytest -v -k "matmul and cpu"

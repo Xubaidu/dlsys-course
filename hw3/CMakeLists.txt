@@ -47,6 +47,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set_property(TARGET ndarray_backend_cpu PROPERTY LINK_OPTIONS -undefined dynamic_lookup)
 endif()
 
+return()
+
 
 
 ####################
