@@ -18,4 +18,4 @@ clean:
 	rm -rf $(buildDir)
 
 tests:
-	python3 -m pytest -v -k "matmul and cpu"
+	python3 -m pytest -v -k "(compact or setitem) and cuda"
