@@ -4,8 +4,16 @@ project(needle C CXX)
 # find correct version of Python
 execute_process(COMMAND python3-config --prefix
   OUTPUT_VARIABLE Python_ROOT_DIR)
-find_package(Python COMPONENTS Development Interpreter REQUIRED)
-include_directories(${Python_INCLUDE_DIRS})
+
+function(print var)
+  message("-- ${var}: ${${var}}") 
+endfunction()
+
+print(Python_ROOT_DIR)
+
+# This will cause a gap between the python version that we used for pytest and for building, so I just comment it out.
+# find_package(Python COMPONENTS Development Interpreter REQUIRED)
+# include_directories(${Python_INCLUDE_DIRS})
 
 # find pybind
 execute_process(COMMAND python3 -m pybind11 --cmakedir
