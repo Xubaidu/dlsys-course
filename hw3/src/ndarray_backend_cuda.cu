@@ -11,7 +11,10 @@ namespace cuda {
 
 #define BASE_THREAD_NUM 256
 
-#define TILE 4
+#define BLOCK_TILE 64
+#define WARP_TILE 4
+#define TILE WARP_TILE
+
 typedef float scalar_t;
 const size_t ELEM_SIZE = sizeof(scalar_t);
 
@@ -339,8 +342,102 @@ SingleEwise(Tanh)
 // Elementwise and scalar operations
 ////////////////////////////////////////////////////////////////////////////////
 
-void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, uint32_t N,
-            uint32_t P) {
+#define bm 64
+#define bn 64
+#define bk 16
+#define rm 4
+#define rn 4
+#define rk 1
+
+__global__ void NaiveGemm(const scalar_t* a, const scalar_t* b, scalar_t* out, uint32_t M, uint32_t K, uint32_t N) {
+    size_t tid_x = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t tid_y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (tid_x < M && tid_y < N) {
+        for (size_t i = 0; i < K; ++i) {
+            // out[tid_x][tid_y] += a[tid_x][i] * b[i][tid_y]
+            out[tid_x * N + tid_y] += a[tid_x * K + i] * b[i * N + tid_y];
+        }
+    }
+}
+
+__global__ void TiledGemm(const scalar_t* a, const scalar_t* b, scalar_t* out, uint32_t M, uint32_t N, uint32_t K)
+{
+    __shared__ scalar_t smem_a[bm][bk];
+    __shared__ scalar_t smem_b[bn][bk];
+    scalar_t reg_a[rm][rk], reg_b[rk][rn];
+    scalar_t reg_c[rm][rn];
+
+    // The logical dim and strides of the above several buffers:
+    // - a[M/bm][K/bk][bm][bk], strides = (K * bm, bm * bk, bk, 1)
+    // - b[K/bk][N/bn][bk][bn], strides = (N * bk, bk * bn, bn, 1)
+    // - smem_a[bm][bk], strides = (bk, 1)
+    // - smem_b[bk][bn], strides = (bn, 1)
+    // - reg_a[rm][rk], strides = (rk, 1)
+    // - reg_b[rk][rn], strides = (rn, 1)
+    // - reg_c[rm][rn], strides = (rn, 1)
+
+    for (size_t k_outer = 0; k_outer < K / bk; k_outer += bk) {
+
+        // smem_a = a[blockIdx.x : blockIdx.x + bm][k_outer : k_outer + bk]
+        // smem_b = b[k_outer : k_outer + bk][blockIdx.y : blockIdx.y + bn]
+
+        // Notice that b has been transposed for the sake of tiling because we need to fetch a linear buffer.
+        // So the fetching of b buffer will look like the same as the a buffer.
+
+        // load data from gmem to smem: a -> smem_a and b -> smem_b
+        for (size_t x_outer = 0; x_outer < bm; ++x_outer) {
+            for (size_t y_outer = 0; y_outer < bk; ++y_outer) {
+                smem_a[x_outer][y_outer] = a[blockIdx.x * K * bm + k_outer * bm * bk + x_outer * bk + y_outer];
+            }
+        }
+
+        for (size_t x_outer = 0; x_outer < bk; ++x_outer) {
+            for (size_t y_outer = 0; y_outer < bn; ++y_outer) {
+                smem_b[x_outer][y_outer] = a[blockIdx.y * N * bk + k_outer * bn * bk + x_outer * bk + y_outer];
+            }
+        }
+
+        for (size_t k_inner = 0; k_inner < bk / rk; k_inner += rk) {
+            // reg_a = smem_a[threadIdx.x : threadIdx.x + rm][k_inner : k_inner + rk]
+            // reg_b = smem_b[k_inner : k_inner + rk][threadIdx.y : threadIdx.y + rn]
+            // most time we set rk = 1 because it does not affect the efficiency much
+
+            // load data from smem to register: smem_a -> reg_a and smem_b -> reg_b
+            for (size_t x_inner = 0; x_inner < rm; ++x_inner) {
+                for (size_t y_inner = 0; y_inner < rk; ++y_inner) {
+                    reg_a[x_inner][y_inner] = smem_a[threadIdx.x + x_inner][y_inner];
+                }
+            }
+            
+            for (size_t x_inner = 0; x_inner < rk; ++x_inner) {
+                for (size_t y_inner = 0; y_inner < rn; ++y_inner) {
+                    reg_b[x_inner][y_inner] = smem_b[x_inner][threadIdx.y + y_inner];
+                }
+            }
+
+            // compute in register-level
+            for (size_t i = 0; i < rm; ++i) {
+                for (size_t k = 0; k < rk; ++k) {
+                    for (size_t j = 0; j < rn; ++j) {
+                        reg_c[i][j] += reg_a[i][k] * reg_b[k][j];
+                    }
+                }
+            }
+        }
+    }
+
+    // out[xbase : xbase + rm, ybase : ybase + rn] = c[:]
+    size_t xbase = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t ybase = blockIdx.y * blockDim.y + threadIdx.y;
+    for (size_t i = 0; i < rm; ++i) {
+        for (size_t j = 0; j < rn; ++j) {
+            out[(xbase + i) * rn + (ybase + j)] = reg_c[i][j];
+        }
+    }
+}
+
+void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, uint32_t K,
+            uint32_t N) {
     /**
      * Multiply two (compact) matrices into an output (also comapct) matrix.  You will want to look
      * at the lecture and notes on GPU-based linear algebra to see how to do this.  Since ultimately
@@ -355,16 +452,19 @@ void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, 
      *
      *
      * Args:
-     *   a: compact 2D array of size m x n
-     *   b: comapct 2D array of size n x p
-     *   out: compact 2D array of size m x p to write the output to
+     *   a: compact 2D array of size m x k
+     *   b: comapct 2D array of size k x n
+     *   out: compact 2D array of size m x n to write the output to
      *   M: rows of a / out
-     *   N: columns of a / rows of b
-     *   P: columns of b / out
+     *   K: columns of a / rows of b
+     *   N: columns of b / out
      */
 
     /// BEGIN YOUR SOLUTION
-
+    CudaDims dim;
+    dim.block = dim3(16, 16, 1);
+    dim.grid = dim3((M + 15) / 16, (N + 15) / 16, (K + 15) / 16);
+    TiledGemm<<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, N, K);
     /// END YOUR SOLUTION
 }
 
