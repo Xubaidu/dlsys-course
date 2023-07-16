@@ -545,6 +545,12 @@ class NDArray:
         assert self.shape[1] == other.shape[0]
 
         m, n, p = self.shape[0], self.shape[1], other.shape[1]
+        
+        if self.device == cuda():
+            out = NDArray.make((m, p), device=self.device)
+            pdb.set_trace()
+            self.device.matmul_tiled(self.compact()._handle, other.compact()._handle, out._handle, m, n, p)
+            return out
 
         # if the matrix is aligned, use tiled matrix multiplication
         if hasattr(self.device, "matmul_tiled") and all(

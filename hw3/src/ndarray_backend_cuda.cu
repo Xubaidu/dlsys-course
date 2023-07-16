@@ -11,9 +11,7 @@ namespace cuda {
 
 #define BASE_THREAD_NUM 256
 
-#define BLOCK_TILE 64
-#define WARP_TILE 4
-#define TILE WARP_TILE
+#define TILE 4
 
 typedef float scalar_t;
 const size_t ELEM_SIZE = sizeof(scalar_t);
@@ -342,85 +340,102 @@ SingleEwise(Tanh)
 // Elementwise and scalar operations
 ////////////////////////////////////////////////////////////////////////////////
 
-#define bm 64
-#define bn 64
-#define bk 16
-#define rm 4
-#define rn 4
-#define rk 1
-
 __global__ void NaiveGemm(const scalar_t* a, const scalar_t* b, scalar_t* out, uint32_t M, uint32_t K, uint32_t N) {
     size_t tid_x = blockIdx.x * blockDim.x + threadIdx.x;
     size_t tid_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (tid_x < M && tid_y < N) {
+        scalar_t temp = 0;
         for (size_t i = 0; i < K; ++i) {
             // out[tid_x][tid_y] += a[tid_x][i] * b[i][tid_y]
-            out[tid_x * N + tid_y] += a[tid_x * K + i] * b[i * N + tid_y];
+            temp += a[tid_x * K + i] * b[i * N + tid_y];
         }
+        out[tid_x * N + tid_y] = temp;
     }
 }
 
+void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, uint32_t K,
+            uint32_t N) {
+    CudaDims dim;
+    dim.block = dim3(16, 16, 1);
+    dim.grid = dim3((M + 15) / 16, (N + 15) / 15, 1);
+    NaiveGemm<<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, K, N);
+}
+
+#define OFFSET(i, j, stride) ((i) * (stride) + (j))
+
+template<const int bm, const int bn, const int bk, const int rm, const int rn>
 __global__ void TiledGemm(const scalar_t* a, const scalar_t* b, scalar_t* out, uint32_t M, uint32_t N, uint32_t K)
 {
     __shared__ scalar_t smem_a[bm][bk];
     __shared__ scalar_t smem_b[bn][bk];
-    scalar_t reg_a[rm][rk], reg_b[rk][rn];
+    scalar_t ldg_b[bn * bk];
+    scalar_t reg_a[rm], reg_b[rn];
     scalar_t reg_c[rm][rn];
 
     // The logical dim and strides of the above several buffers:
-    // - a[M/bm][K/bk][bm][bk], strides = (K * bm, bm * bk, bk, 1)
-    // - b[K/bk][N/bn][bk][bn], strides = (N * bk, bk * bn, bn, 1)
-    // - smem_a[bm][bk], strides = (bk, 1)
-    // - smem_b[bk][bn], strides = (bn, 1)
-    // - reg_a[rm][rk], strides = (rk, 1)
-    // - reg_b[rk][rn], strides = (rn, 1)
-    // - reg_c[rm][rn], strides = (rn, 1)
+    // - a[M x K]
+    // - b[K x N]
+    // - smem_a[bm][bk]
+    // - smem_b[bn][bk]
+    // - reg_a[rm]
+    // - reg_b[rn]
+    // - reg_c[rm][rn]
 
-    for (size_t k_outer = 0; k_outer < K / bk; k_outer += bk) {
-
-        // smem_a = a[blockIdx.x : blockIdx.x + bm][k_outer : k_outer + bk]
-        // smem_b = b[k_outer : k_outer + bk][blockIdx.y : blockIdx.y + bn]
-
-        // Notice that b has been transposed for the sake of tiling because we need to fetch a linear buffer.
-        // So the fetching of b buffer will look like the same as the a buffer.
+    size_t bx = blockIdx.x, by = blockIdx.y;
+    size_t tx = threadIdx.x, ty = threadIdx.y;
+    for (size_t k_outer = 0; k_outer < K; k_outer += bk) {
 
         // load data from gmem to smem: a -> smem_a and b -> smem_b
+        // smem_a = a[bx : bx + bm][k_outer : k_outer + bk]
+        // smem_b = b[by : by + bn][k_outer : k_outer + bk], need to be transposed
+
         for (size_t x_outer = 0; x_outer < bm; ++x_outer) {
             for (size_t y_outer = 0; y_outer < bk; ++y_outer) {
-                smem_a[x_outer][y_outer] = a[blockIdx.x * K * bm + k_outer * bm * bk + x_outer * bk + y_outer];
+                smem_a[x_outer][y_outer] = a[OFFSET(bx + x_outer, k_outer + y_outer, bk)];
             }
+        }
+        if (bx == 0 && by == 0 && tx == 0 && ty == 0) {
+            for (int i = 0; i < bm; ++i) {
+                for (int j = 0; j < bk; ++j) {
+                    printf("%f%c", smem_a[i][j], " \n"[j == bk - 1]);
+                }
+            }
+            printf("\n");
         }
 
         for (size_t x_outer = 0; x_outer < bk; ++x_outer) {
             for (size_t y_outer = 0; y_outer < bn; ++y_outer) {
-                smem_b[x_outer][y_outer] = a[blockIdx.y * N * bk + k_outer * bn * bk + x_outer * bk + y_outer];
+                ldg_b[OFFSET(x_outer, y_outer, bn)] = b[OFFSET(by + x_outer, k_outer + y_outer, bn)];
+            }
+            for (size_t y_outer = 0; y_outer < bn; ++y_outer) {
+                smem_b[y_outer][x_outer] = ldg_b[OFFSET(x_outer, y_outer, bn)];
             }
         }
+        __syncthreads();
 
-        for (size_t k_inner = 0; k_inner < bk / rk; k_inner += rk) {
-            // reg_a = smem_a[threadIdx.x : threadIdx.x + rm][k_inner : k_inner + rk]
-            // reg_b = smem_b[k_inner : k_inner + rk][threadIdx.y : threadIdx.y + rn]
-            // most time we set rk = 1 because it does not affect the efficiency much
-
+        for (size_t k_inner = 0; k_inner < bk; ++k_inner) {
             // load data from smem to register: smem_a -> reg_a and smem_b -> reg_b
+            // reg_a = smem_a[tx : tx + rm][k_inner : k_inner + 1]
+            // reg_b = smem_b[ty : ty + rn][k_inner : k_inner + 1]
             for (size_t x_inner = 0; x_inner < rm; ++x_inner) {
-                for (size_t y_inner = 0; y_inner < rk; ++y_inner) {
-                    reg_a[x_inner][y_inner] = smem_a[threadIdx.x + x_inner][y_inner];
+                reg_a[x_inner] = smem_a[tx + x_inner][k_inner];
+            }
+
+            if (bx == 0 && by == 0 && tx == 0 && ty == 0) {
+                for (int i = 0; i < rm; ++i) {
+                    printf("%f%c", reg_a[i], " \n"[i == rm - 1]);
                 }
+                printf("\n");
             }
             
-            for (size_t x_inner = 0; x_inner < rk; ++x_inner) {
-                for (size_t y_inner = 0; y_inner < rn; ++y_inner) {
-                    reg_b[x_inner][y_inner] = smem_b[x_inner][threadIdx.y + y_inner];
-                }
+            for (size_t x_inner = 0; x_inner < rn; ++x_inner) {
+                reg_b[x_inner] = smem_b[ty + x_inner][k_inner];
             }
 
             // compute in register-level
             for (size_t i = 0; i < rm; ++i) {
-                for (size_t k = 0; k < rk; ++k) {
-                    for (size_t j = 0; j < rn; ++j) {
-                        reg_c[i][j] += reg_a[i][k] * reg_b[k][j];
-                    }
+                for (size_t j = 0; j < rn; ++j) {
+                    reg_c[i][j] = reg_a[i] * reg_b[j];
                 }
             }
         }
@@ -431,12 +446,12 @@ __global__ void TiledGemm(const scalar_t* a, const scalar_t* b, scalar_t* out, u
     size_t ybase = blockIdx.y * blockDim.y + threadIdx.y;
     for (size_t i = 0; i < rm; ++i) {
         for (size_t j = 0; j < rn; ++j) {
-            out[(xbase + i) * rn + (ybase + j)] = reg_c[i][j];
+            out[OFFSET(xbase + i, ybase + j, rn)] += reg_c[i][j];
         }
     }
 }
 
-void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, uint32_t K,
+void Tiled_Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, uint32_t K,
             uint32_t N) {
     /**
      * Multiply two (compact) matrices into an output (also comapct) matrix.  You will want to look
@@ -461,10 +476,17 @@ void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, 
      */
 
     /// BEGIN YOUR SOLUTION
+    
+    constexpr int bm = 64;
+    constexpr int bn = 64;
+    constexpr int bk = 16;
+    constexpr int rm = 4;
+    constexpr int rn = 4;
+
     CudaDims dim;
-    dim.block = dim3(16, 16, 1);
-    dim.grid = dim3((M + 15) / 16, (N + 15) / 16, (K + 15) / 16);
-    TiledGemm<<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, N, K);
+    dim.block = dim3(bm / rm, bn / rn, 1);
+    dim.grid = dim3((M + bm - 1) / bm, (N + bn - 1) / bn, 1);
+    TiledGemm<bm, bn, bk, rm, rn><<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, K, N);
     /// END YOUR SOLUTION
 }
 
@@ -595,6 +617,7 @@ PYBIND11_MODULE(ndarray_backend_cuda, m) {
     m.def("ewise_tanh", EwiseTanh);
 
     m.def("matmul", Matmul);
+    m.def("matmul_tiled", Tiled_Matmul);
 
     m.def("reduce_max", ReduceMax);
     m.def("reduce_sum", ReduceSum);
