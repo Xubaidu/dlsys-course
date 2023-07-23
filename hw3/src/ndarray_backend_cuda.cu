@@ -362,14 +362,16 @@ void Matmul(const CudaArray &a, const CudaArray &b, CudaArray *out, uint32_t M, 
 }
 
 #define OFFSET(i, j, stride) ((i) * (stride) + (j))
+#define MIN(i, j) ((i) > (j) ? (j) : (i))
 
 template<const int bm, const int bn, const int bk, const int rm, const int rn>
 __global__ void TiledGemm(const scalar_t* a, const scalar_t* b, scalar_t* out, uint32_t M, uint32_t N, uint32_t K)
 {
     __shared__ scalar_t smem_a[bm][bk];
     __shared__ scalar_t smem_b[bn][bk];
-    scalar_t ldg_b[bn * bk];
-    scalar_t reg_a[rm], reg_b[rn];
+    scalar_t ldg_b[bk * bn];
+    scalar_t reg_a[rm];
+    scalar_t reg_b[rn];
     scalar_t reg_c[rm][rn];
 
     // The logical dim and strides of the above several buffers:
@@ -381,72 +383,112 @@ __global__ void TiledGemm(const scalar_t* a, const scalar_t* b, scalar_t* out, u
     // - reg_b[rn]
     // - reg_c[rm][rn]
 
-    size_t bx = blockIdx.x, by = blockIdx.y;
-    size_t tx = threadIdx.x, ty = threadIdx.y;
-    for (size_t k_outer = 0; k_outer < K; k_outer += bk) {
+    int bx = blockIdx.x, by = blockIdx.y;
+    int tx = threadIdx.x, ty = threadIdx.y;
+
+    // printf("bx: %d, by: %d, tx: %d, ty: %d\n", bx, by, tx, ty);
+    for (int k_outer = 0; k_outer < K; k_outer += bk) {
 
         // load data from gmem to smem: a -> smem_a and b -> smem_b
-        // smem_a = a[bx : bx + bm][k_outer : k_outer + bk]
-        // smem_b = b[by : by + bn][k_outer : k_outer + bk], need to be transposed
-
-        for (size_t x_outer = 0; x_outer < bm; ++x_outer) {
-            for (size_t y_outer = 0; y_outer < bk; ++y_outer) {
-                smem_a[x_outer][y_outer] = a[OFFSET(bx + x_outer, k_outer + y_outer, bk)];
-            }
-        }
-        if (bx == 0 && by == 0 && tx == 0 && ty == 0) {
-            for (int i = 0; i < bm; ++i) {
-                for (int j = 0; j < bk; ++j) {
-                    printf("%f%c", smem_a[i][j], " \n"[j == bk - 1]);
+        // smem_a = a[bx * bm : (bx + 1) * bm][k_outer : k_outer + bk]
+        for (int x_outer = 0; x_outer < bm; ++x_outer) {
+            for (int y_outer = 0; y_outer < bk; ++y_outer) {
+                int i = bx * bm + x_outer;
+                int j = k_outer + y_outer;
+                if (i < M && j < K) {
+                    smem_a[x_outer][y_outer] = a[OFFSET(i, j, K)];
                 }
             }
-            printf("\n");
         }
 
-        for (size_t x_outer = 0; x_outer < bk; ++x_outer) {
-            for (size_t y_outer = 0; y_outer < bn; ++y_outer) {
-                ldg_b[OFFSET(x_outer, y_outer, bn)] = b[OFFSET(by + x_outer, k_outer + y_outer, bn)];
+        // ldg_b  = b[k_outer : k_outer + bk][by * bn : (by + 1) * bn], transpose to smem_b
+        // smem_b = b[by * bn : (by + 1) * bn][k_outer : k_outer + bk]
+        for (int x_outer = 0; x_outer < bk; ++x_outer) {
+            for (int y_outer = 0; y_outer < bn; ++y_outer) {
+                int i = k_outer + x_outer;
+                int j = by * bn + y_outer;
+                if (i < K && j < N) {
+                    ldg_b[OFFSET(x_outer, y_outer, bn)] = b[OFFSET(i, j, N)];
+                }
             }
-            for (size_t y_outer = 0; y_outer < bn; ++y_outer) {
+            for (int y_outer = 0; y_outer < bn; ++y_outer) {
                 smem_b[y_outer][x_outer] = ldg_b[OFFSET(x_outer, y_outer, bn)];
             }
         }
         __syncthreads();
 
-        for (size_t k_inner = 0; k_inner < bk; ++k_inner) {
+
+        if (bx == 0 && by == 0 && tx == 1 && ty == 1) {
+            printf("smem_a: \n");
+            for (int i = 0; i < MIN(bm, M); ++i) {
+                for (int j = 0; j < MIN(bk, K); ++j) {
+                    printf("%f%c", smem_a[i][j], " \n"[j == MIN(bk, K) - 1]);
+                }
+            }
+            printf("\n");
+
+            printf("smem_b: \n");
+            for (int i = 0; i < MIN(bn, N); ++i) {
+                for (int j = 0; j < MIN(bk, K); ++j) {
+                    printf("%f%c", smem_b[i][j], " \n"[j == MIN(bk, K) - 1]);
+                }
+            }
+            printf("\n");
+        }
+
+        for (int k_inner = 0; k_inner < bk; ++k_inner) {
             // load data from smem to register: smem_a -> reg_a and smem_b -> reg_b
-            // reg_a = smem_a[tx : tx + rm][k_inner : k_inner + 1]
-            // reg_b = smem_b[ty : ty + rn][k_inner : k_inner + 1]
-            for (size_t x_inner = 0; x_inner < rm; ++x_inner) {
-                reg_a[x_inner] = smem_a[tx + x_inner][k_inner];
+            // reg_a = smem_a[tx * rm : (tx + 1) * rm][k_inner : k_inner + 1]
+            // reg_b = smem_b[ty * rn : (ty + 1) * rn][k_inner : k_inner + 1]
+            for (int x_inner = 0; x_inner < rm; ++x_inner) {
+                int i = tx * rm + x_inner;
+                reg_a[x_inner] = smem_a[i][k_inner];
+            }
+            
+            for (int x_inner = 0; x_inner < rn; ++x_inner) {
+                int i = ty * rn + x_inner;
+                reg_b[x_inner] = smem_b[i][k_inner];
             }
 
-            if (bx == 0 && by == 0 && tx == 0 && ty == 0) {
+            if (bx == 0 && by == 0 && tx == 1 && ty == 1 && k_inner < K) {
+                printf("A tile: \n");
                 for (int i = 0; i < rm; ++i) {
                     printf("%f%c", reg_a[i], " \n"[i == rm - 1]);
                 }
                 printf("\n");
-            }
-            
-            for (size_t x_inner = 0; x_inner < rn; ++x_inner) {
-                reg_b[x_inner] = smem_b[ty + x_inner][k_inner];
+
+                printf("B tile: \n");
+                for (int i = 0; i < rn; ++i) {
+                    printf("%f%c", reg_b[i], " \n"[i == rn - 1]);
+                }
+                printf("\n");
             }
 
             // compute in register-level
-            for (size_t i = 0; i < rm; ++i) {
-                for (size_t j = 0; j < rn; ++j) {
-                    reg_c[i][j] = reg_a[i] * reg_b[j];
+            for (int i = 0; i < rm; ++i) {
+                for (int j = 0; j < rn; ++j) {
+                    reg_c[i][j] += reg_a[i] * reg_b[j];
                 }
             }
         }
     }
 
+    if (bx == 0 && by == 0 && tx == 0 && ty == 1) {
+        printf("reg c: \n");
+        for (int i = 0; i < rm; ++i) {
+            for (int j = 0; j < rn; ++j) {
+                printf("%f%c", reg_c[i][j], " \n"[j == rn - 1]);
+            }
+        }
+        printf("\n");
+    }
+
     // out[xbase : xbase + rm, ybase : ybase + rn] = c[:]
-    size_t xbase = blockIdx.x * blockDim.x + threadIdx.x;
-    size_t ybase = blockIdx.y * blockDim.y + threadIdx.y;
-    for (size_t i = 0; i < rm; ++i) {
-        for (size_t j = 0; j < rn; ++j) {
-            out[OFFSET(xbase + i, ybase + j, rn)] += reg_c[i][j];
+    int xbase = blockIdx.x * blockDim.x + threadIdx.x;
+    int ybase = blockIdx.y * blockDim.y + threadIdx.y;
+    for (int i = 0; i < rm; ++i) {
+        for (int j = 0; j < rn; ++j) {
+            out[OFFSET(xbase * rm + i, ybase * rn + j, N)] += reg_c[i][j];
         }
     }
 }

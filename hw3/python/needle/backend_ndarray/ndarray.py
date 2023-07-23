@@ -548,7 +548,7 @@ class NDArray:
         
         if self.device == cuda():
             out = NDArray.make((m, p), device=self.device)
-            pdb.set_trace()
+            # pdb.set_trace()
             self.device.matmul_tiled(self.compact()._handle, other.compact()._handle, out._handle, m, n, p)
             return out
 

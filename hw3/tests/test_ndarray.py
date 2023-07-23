@@ -290,7 +290,8 @@ def test_broadcast_to(device, params):
     check_same_memory(A, rhs)
 
 
-matmul_dims = [(4, 4, 4),
+matmul_dims = [(6, 6, 6),
+    (4, 4, 4),
     (16, 16, 16), 
     (8, 8, 8), 
     (1, 2, 3), 
@@ -308,6 +309,7 @@ def test_matmul(m, n, p, device):
     _B = np.ones((n, p))
     A = nd.array(_A, device=device)
     B = nd.array(_B, device=device)
+    pdb.set_trace()
     np.testing.assert_allclose((A @ B).numpy(), _A @ _B, rtol=1e-5, atol=1e-5)
 
 
